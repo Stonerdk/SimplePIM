@@ -61,7 +61,7 @@ void simplepim_scatter(char* const table_id, void* elements, uint64_t len, uint3
 
     // offset
     DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, curr_offset, len_per_dpu_in_byte, DPU_XFER_DEFAULT));
-    
+
     // calculate lens per dpu
     uint32_t pad_len_in_elem = pad_len/type_size;
     uint32_t num_transfered_elem_per_dpu = (len + pad_len_in_elem)/num_dpus;
@@ -101,7 +101,7 @@ void* simplepim_gather(char* const table_id, simplepim_management_t* table_manag
         return NULL;
     }
 
-    uint32_t num_dpus = table_management->num_dpus; 
+    uint32_t num_dpus = table_management->num_dpus;
     table_host_t* t = lookup_table(table_id, table_management);
     uint32_t* lens = t->lens_each_dpu;
     uint32_t type_size = t->table_type_size;
@@ -110,7 +110,6 @@ void* simplepim_gather(char* const table_id, simplepim_management_t* table_manag
     for(int i=0; i<num_dpus; i++){
         max_len = max_len>lens[i]?max_len:lens[i];
     }
-
     uint64_t aligned_max_len = (max_len*type_size)+(8-(max_len*type_size)%8);
     uint64_t buff_size = aligned_max_len*num_dpus;
     uint64_t total_size = t->len*t->table_type_size;
@@ -120,7 +119,8 @@ void* simplepim_gather(char* const table_id, simplepim_management_t* table_manag
 
     int i;
     struct dpu_set_t dpu;
-	DPU_FOREACH(set, dpu, i) {  
+
+	DPU_FOREACH(set, dpu, i) {
 		DPU_ASSERT(dpu_prepare_xfer(dpu, tmp_buffer+i*aligned_max_len));
 	}
     DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME, start_addr, aligned_max_len, DPU_XFER_DEFAULT));
@@ -129,14 +129,12 @@ void* simplepim_gather(char* const table_id, simplepim_management_t* table_manag
     void* ptr_in_res = (void*)res;
     uint32_t curr_size;
 
-    
     for(int j=0; j<num_dpus; j++){
         curr_size = type_size*lens[j];
         memcpy(ptr_in_res, buff_ptr, curr_size);
         buff_ptr += aligned_max_len;
         ptr_in_res += curr_size;
     }
-    
 
     free(tmp_buffer);
     return res;
@@ -148,9 +146,9 @@ void simplepim_broadcast(char* const table_id, void* elements, uint64_t len, uin
     if(contains_table(table_id, table_management)){
     	curr_offset = lookup_table(table_id, table_management) -> start;
     }
-   
+
     uint64_t broadcast_size = (len*type_size)+8-(len*type_size)%8;
-    uint32_t num_dpus = table_management->num_dpus; 
+    uint32_t num_dpus = table_management->num_dpus;
     struct dpu_set_t set = table_management->set;
     DPU_ASSERT(dpu_broadcast_to(set, DPU_MRAM_HEAP_POINTER_NAME, curr_offset, elements, broadcast_size, DPU_XFER_DEFAULT));
     // table information to management unit
@@ -169,7 +167,7 @@ void simplepim_broadcast(char* const table_id, void* elements, uint64_t len, uin
 
     t->lens_each_dpu = lens;
     t->is_virtual_zipped = 0;
-    add_table(t, table_management);	
+    add_table(t, table_management);
     table_management->free_space_start_pos = t->end > table_management->free_space_start_pos ? t->end : table_management->free_space_start_pos;
 }
 
@@ -180,7 +178,7 @@ void simplepim_allgather(char* const table_id, char* const new_table_id, simplep
         return;
     }
 
-    uint32_t num_dpus = table_management->num_dpus; 
+    uint32_t num_dpus = table_management->num_dpus;
     table_host_t* t = lookup_table(table_id, table_management);
     uint32_t* lens = t->lens_each_dpu;
     uint32_t type_size = t->table_type_size;
@@ -211,7 +209,7 @@ void simplepim_allreduce(char* const table_id, handle_t* binary_handle, simplepi
             return;
         }
 
-        uint32_t num_dpus = table_management->num_dpus; 
+        uint32_t num_dpus = table_management->num_dpus;
         table_host_t* t = lookup_table(table_id, table_management);
         uint32_t* lens = t->lens_each_dpu;
         uint32_t type_size = t->table_type_size;
@@ -245,7 +243,7 @@ void simplepim_allreduce(char* const table_id, handle_t* binary_handle, simplepi
         DPU_ASSERT(dpu_broadcast_to(set, DPU_MRAM_HEAP_POINTER_NAME, outputs_pos, bc_buffer, broadcast_size, DPU_XFER_DEFAULT));
 
         free(bc_buffer);
-    
+
     }
     else{
         printf("ERROR: compiled binary ");

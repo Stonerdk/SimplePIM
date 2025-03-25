@@ -2,3 +2,5 @@
 *.csv
 *.so
 *.json
+*.o
+benchmarks/**/bin/*

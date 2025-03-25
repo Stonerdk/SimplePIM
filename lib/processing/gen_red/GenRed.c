@@ -6,14 +6,14 @@
 */
 
 void combine_table_entries(void* table1, void* table2, uint32_t table_size, uint32_t value_size, void (*combineFunc)(void*, void*)){
-    
+
     uint32_t curr_entry;
- 
+
     for(int i=0; i<table_size; ++i){
         curr_entry = i*(value_size);
         (*combineFunc)(table1+curr_entry, table2+curr_entry);
-        
-    } 
+
+    }
 
 }
 
@@ -32,11 +32,11 @@ void gather_tables_to_host(simplepim_management_t* table_management, void* my_ta
 
 
 	DPU_FOREACH(set, dpu, i) {
-	    
+
 		DPU_ASSERT(dpu_prepare_xfer(dpu, tables+i*aligned_table_size));
 	}
    DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME, curr_offset_on_mram, aligned_table_size, DPU_XFER_DEFAULT));
-    
+
     uint32_t omp_threads = 8;
     uint32_t thread_id;
     uint32_t table_size = len*type_size;
@@ -45,9 +45,9 @@ void gather_tables_to_host(simplepim_management_t* table_management, void* my_ta
     void* omp_helper_tables = malloc(table_size*omp_threads);
 
 
-    
-    omp_set_dynamic(0);     // Explicitly disable dynamic teams private(omp_table, thread_id) 
-    #pragma omp parallel num_threads(omp_threads) 
+
+    omp_set_dynamic(0);     // Explicitly disable dynamic teams private(omp_table, thread_id)
+    #pragma omp parallel num_threads(omp_threads)
     {
         void* omp_table;
         void* curr_table;
@@ -62,9 +62,9 @@ void gather_tables_to_host(simplepim_management_t* table_management, void* my_ta
     #pragma omp for
         for(int i=0; i<num_dpus; i++){
             curr_table = (void*)(tables+i*aligned_table_size);
-            combine_table_entries(omp_table, curr_table, len, type_size, combineFunc);  
+            combine_table_entries(omp_table, curr_table, len, type_size, combineFunc);
         }
-        
+
 
         #pragma omp barrier
     }
@@ -74,7 +74,7 @@ void gather_tables_to_host(simplepim_management_t* table_management, void* my_ta
         table = (void*)(omp_helper_tables+i*table_size);
         combine_table_entries(my_table, table, len, type_size, combineFunc);
     }
-    
+
 
     free(omp_helper_tables);
     free(tables);
@@ -90,7 +90,7 @@ void* table_gen_red(const char* src_name, const char* dest_name, uint32_t output
     if(contains_table(dest_name, table_management)){
         outputs = lookup_table(dest_name, table_management) -> start;
     }
-    
+
     if(binary_handle->func_type == 1){
         if(!contains_table(src_name, table_management)){
             printf("source table ");
@@ -123,7 +123,7 @@ void* table_gen_red(const char* src_name, const char* dest_name, uint32_t output
             input_args[i].table_len = output_len;
             input_args[i].info = info;
         }
-    
+
         //parse arguments to map function call
         int i;
         struct dpu_set_t dpu;
@@ -132,11 +132,11 @@ void* table_gen_red(const char* src_name, const char* dest_name, uint32_t output
 	    }
 
         DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "GEN_RED_INPUT_ARGUMENTS", 0, sizeof(gen_red_arguments_t), DPU_XFER_DEFAULT));
-        
+
         gettimeofday(&end_time, NULL);
         double prepare_args_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
                       (end_time.tv_usec - start_time.tv_usec);
-        
+
         //call red function
         gettimeofday(&start_time, NULL);
         DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
@@ -157,7 +157,7 @@ void* table_gen_red(const char* src_name, const char* dest_name, uint32_t output
         printf("dynamic library linking failed!!!\n");
         }
 
-        
+
         gather_tables_to_host(table_management, my_table, output_len, output_type, outputs, init_func, combine_func);
         dlclose(lib);
         gettimeofday(&end_time, NULL);
@@ -190,7 +190,7 @@ void* table_gen_red(const char* src_name, const char* dest_name, uint32_t output
         gettimeofday(&end_time, NULL);
         double register_table_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
                       (end_time.tv_usec - start_time.tv_usec);
-        
+
         printf("--------------\n");
         printf("table reduction function : ");
         printf(binary);
@@ -206,5 +206,5 @@ void* table_gen_red(const char* src_name, const char* dest_name, uint32_t output
         printf(binary_handle->bin_location);
         printf(" does not contain general reduction functions\n");
     }
-    
+
 }

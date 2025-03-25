@@ -5,7 +5,7 @@ void table_map(const char* src_name, const char* dest_name, uint32_t output_type
     struct dpu_set_t dpu;
     struct timeval start_time;
     struct timeval end_time;
-    
+
     uint32_t outputs = table_management->free_space_start_pos;
     if(contains_table(dest_name, table_management)){
         outputs = lookup_table(dest_name, table_management) -> start;
@@ -34,7 +34,7 @@ void table_map(const char* src_name, const char* dest_name, uint32_t output_type
         // use handle for precompiled binaries
         const char* binary = binary_handle->bin_location;
         DPU_ASSERT(dpu_load(set, binary, NULL));
-    
+
         //parse arguments to map function call
 	    DPU_FOREACH(set, dpu, i) {
 	        input_args[i].input_start_offset = inputs;
@@ -48,11 +48,11 @@ void table_map(const char* src_name, const char* dest_name, uint32_t output_type
 	    }
 
         DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "MAP_INPUT_ARGUMENTS", 0, sizeof(map_arguments_t), DPU_XFER_DEFAULT));
-    
+
         gettimeofday(&end_time, NULL);
         double prepare_args_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
                       (end_time.tv_usec - start_time.tv_usec);
-                
+
         //call map function
         gettimeofday(&start_time, NULL);
         DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
@@ -76,7 +76,7 @@ void table_map(const char* src_name, const char* dest_name, uint32_t output_type
         t->lens_each_dpu = malloc(num_dpus*sizeof(int32_t));
         t->is_virtual_zipped = 0;
         memcpy(t->lens_each_dpu, lens, num_dpus*sizeof(int32_t));
-	
+
         add_table(t, table_management);
     	table_management->free_space_start_pos = table_management->free_space_start_pos > t->end ? table_management->free_space_start_pos : t->end;
 
@@ -106,7 +106,7 @@ void table_map(const char* src_name, const char* dest_name, uint32_t output_type
         // use handle for precompiled binaries
         const char* binary = binary_handle->bin_location;
         DPU_ASSERT(dpu_load(set, binary, NULL));
-    
+
         //parse arguments to map function call
 	    DPU_FOREACH(set, dpu, i) {
 	        input_args[i].input_start_offset = inputs;
@@ -124,11 +124,11 @@ void table_map(const char* src_name, const char* dest_name, uint32_t output_type
 	    }
 
         DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "MAP_INPUT_ARGUMENTS", 0, sizeof(map_arguments_t), DPU_XFER_DEFAULT));
-    
+
         gettimeofday(&end_time, NULL);
         double prepare_args_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
                       (end_time.tv_usec - start_time.tv_usec);
-                
+
         //call map function
         gettimeofday(&start_time, NULL);
         DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
@@ -154,7 +154,7 @@ void table_map(const char* src_name, const char* dest_name, uint32_t output_type
         memcpy(t->lens_each_dpu, lens, num_dpus*sizeof(int32_t));
 
         add_table(t, table_management);
-    
+
 
         gettimeofday(&end_time, NULL);
         double register_table_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
@@ -172,5 +172,5 @@ void table_map(const char* src_name, const char* dest_name, uint32_t output_type
         printf(binary_handle->bin_location);
         printf(" does not contain map function\n");
     }
-    
+
 }

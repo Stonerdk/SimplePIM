@@ -23,7 +23,7 @@ void init(T* A){
 void add(void* p1, void* p2){
     T* ptr1 = (T*)(p1);
     T* ptr2 = (T*)(p2);
-    *ptr1 += *ptr2;  
+    *ptr1 += *ptr2;
 }
 
 static T reduction_host(T* A) {
@@ -45,7 +45,7 @@ void run(){
 
     handle_t* va_handle = create_handle("red_funcs", REDUCE);
 
-    
+
     T* res = table_gen_red("t1", "t2", sizeof(T), 1, va_handle, table_management, 0);
 
 
@@ -66,8 +66,8 @@ void run(){
         printf("correct res : %f, got res : %f \n", correct_res, *res);
         printf("cpu result does not match \n");
     }
-    
-    
+
+
 }
 
 

@@ -7,8 +7,8 @@
 simplepim_management_t* table_management_init(uint32_t num_dpus){
 
     struct dpu_set_t set;
-    DPU_ASSERT(dpu_alloc(num_dpus, NULL, &set));
-    
+    DPU_ASSERT(dpu_alloc(num_dpus, "disableSafeChecks=1", &set));
+
     small_table_init(set);
     simplepim_management_t* management = malloc(sizeof(simplepim_management_t));
     management->set = set;
@@ -34,7 +34,7 @@ void add_table(table_host_t* table, simplepim_management_t* management){
         }
     }
 
-    uint32_t curr_space = management->curr_space;   
+    uint32_t curr_space = management->curr_space;
     if(curr_space == num_tables){
         management->tables = realloc(management->tables, (curr_space+16)*(sizeof(table_host_t*)));
         management->tables[num_tables] = table;
