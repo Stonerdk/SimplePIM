@@ -93,78 +93,84 @@ void table_map(const char* src_name, const char* dest_name, uint32_t output_type
     }
     else if (binary_handle->func_type == 0 && src_table->is_virtual_zipped == 1)
     {
-         //timing
-        gettimeofday(&start_time, NULL);
-
-        struct dpu_set_t set = table_management->set;
-        uint32_t num_dpus = table_management->num_dpus;
-        uint32_t* lens = src_table->lens_each_dpu;
-        uint32_t input_type = src_table->table_type_size;
-        uint32_t inputs = src_table->start;
-
-        map_arguments_t* input_args = table_management->map_args;
-        // use handle for precompiled binaries
+        double kernel_time = 0;
+        double prepare_args_time = 0;
+        double register_table_time = 0;
+        int warmup = 10, repeat = 1000;
         const char* binary = binary_handle->bin_location;
-        DPU_ASSERT(dpu_load(set, binary, NULL));
+        for (int rep = 0; rep < warmup + repeat; rep++) {
+         //timing
+            gettimeofday(&start_time, NULL);
 
-        //parse arguments to map function call
-	    DPU_FOREACH(set, dpu, i) {
-	        input_args[i].input_start_offset = inputs;
-            input_args[i].input_type_size = input_type;
-            input_args[i].output_start_offset = outputs;
-            input_args[i].output_type_size = output_type;
-            input_args[i].len = lens[i];
-            input_args[i].info = info;
-            input_args[i].is_virtually_zipped = 1;
-            input_args[i].start1 = src_table->start1;
-            input_args[i].start2 = src_table->start2;
-            input_args[i].type1 = src_table->type1;
-            input_args[i].type2 = src_table->type2;
-		    DPU_ASSERT(dpu_prepare_xfer(dpu, input_args + i));
-	    }
+            struct dpu_set_t set = table_management->set;
+            uint32_t num_dpus = table_management->num_dpus;
+            uint32_t* lens = src_table->lens_each_dpu;
+            uint32_t input_type = src_table->table_type_size;
+            uint32_t inputs = src_table->start;
 
-        DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "MAP_INPUT_ARGUMENTS", 0, sizeof(map_arguments_t), DPU_XFER_DEFAULT));
+            map_arguments_t* input_args = table_management->map_args;
+            // use handle for precompiled binaries
+            DPU_ASSERT(dpu_load(set, binary, NULL));
 
-        gettimeofday(&end_time, NULL);
-        double prepare_args_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
-                      (end_time.tv_usec - start_time.tv_usec);
+            //parse arguments to map function call
+            DPU_FOREACH(set, dpu, i) {
+                input_args[i].input_start_offset = inputs;
+                input_args[i].input_type_size = input_type;
+                input_args[i].output_start_offset = outputs;
+                input_args[i].output_type_size = output_type;
+                input_args[i].len = lens[i];
+                input_args[i].info = info;
+                input_args[i].is_virtually_zipped = 1;
+                input_args[i].start1 = src_table->start1;
+                input_args[i].start2 = src_table->start2;
+                input_args[i].type1 = src_table->type1;
+                input_args[i].type2 = src_table->type2;
+                DPU_ASSERT(dpu_prepare_xfer(dpu, input_args + i));
+            }
 
-        //call map function
-        gettimeofday(&start_time, NULL);
-        DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
-        gettimeofday(&end_time, NULL);
+            DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "MAP_INPUT_ARGUMENTS", 0, sizeof(map_arguments_t), DPU_XFER_DEFAULT));
 
-        double kernel_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
-                      (end_time.tv_usec - start_time.tv_usec);
+            gettimeofday(&end_time, NULL);
+            if (rep >= warmup)
+                prepare_args_time += (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
+                            (end_time.tv_usec - start_time.tv_usec);
 
-        // table information to management unit
-        // timing
-        gettimeofday(&start_time, NULL);
+            //call map function
+            gettimeofday(&start_time, NULL);
+            DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
+            gettimeofday(&end_time, NULL);
 
-        table_host_t* t = malloc(sizeof(table_host_t));
-        t->name = malloc(strlen(dest_name)+1);
-        memcpy(t->name, dest_name, strlen(dest_name)+1);
-        t->start = outputs;
-        uint32_t max_end_dpu = max_len_dpu(num_dpus, src_table)*output_type+outputs;
-        t->end = max_end_dpu+(8-max_end_dpu%8);
-        t->len = src_table->len;
-        t->table_type_size = output_type;
-        t->lens_each_dpu = malloc(num_dpus*sizeof(int32_t));
-        t->is_virtual_zipped = 0;
-        memcpy(t->lens_each_dpu, lens, num_dpus*sizeof(int32_t));
+            if (rep >= warmup)
+                kernel_time += (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
+                            (end_time.tv_usec - start_time.tv_usec);
 
-        add_table(t, table_management);
+            // table information to management unit
+            // timing
+            gettimeofday(&start_time, NULL);
 
-
-        gettimeofday(&end_time, NULL);
-        double register_table_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
-                      (end_time.tv_usec - start_time.tv_usec);
+            table_host_t* t = malloc(sizeof(table_host_t));
+            t->name = malloc(strlen(dest_name)+1);
+            memcpy(t->name, dest_name, strlen(dest_name)+1);
+            t->start = outputs;
+            uint32_t max_end_dpu = max_len_dpu(num_dpus, src_table)*output_type+outputs;
+            t->end = max_end_dpu+(8-max_end_dpu%8);
+            t->len = src_table->len;
+            t->table_type_size = output_type;
+            t->lens_each_dpu = malloc(num_dpus*sizeof(int32_t));
+            t->is_virtual_zipped = 0;
+            memcpy(t->lens_each_dpu, lens, num_dpus*sizeof(int32_t));
+            add_table(t, table_management);
+            gettimeofday(&end_time, NULL);
+            if (rep >= warmup)
+                register_table_time += (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
+                            (end_time.tv_usec - start_time.tv_usec);
+        }
 
         printf("--------------\n");
         printf("map function : ");
         printf(binary);
-        printf("\nmap function kernel execution time : %f\n", kernel_time/1000);
-        printf("function call and table management time : %f\n", (register_table_time+prepare_args_time)/1000);
+        printf("\nmap function kernel execution time : %f\n", kernel_time/repeat/1000);
+        printf("function call and table management time : %f\n", (register_table_time+prepare_args_time)/repeat/1000);
         printf("--------------\n");
     }
     else{

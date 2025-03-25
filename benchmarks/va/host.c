@@ -60,6 +60,8 @@ void run()
     init(B, 1);
     vector_addition_host(A, B, correct_res);
 
+    handle_t *add_handle = create_handle("va_funcs", MAP);
+    handle_t *zip_handle = create_handle("", ZIP);
     Timer timer;
     start(&timer, 0, 0);
     start(&timer, 5, 0);
@@ -67,9 +69,8 @@ void run()
     simplepim_scatter("t2", B, nr_elements, sizeof(T), table_management);
     stop(&timer, 0);
     printf("end of data transfer\n");
+    T *res;
 
-    handle_t *add_handle = create_handle("va_funcs", MAP);
-    handle_t *zip_handle = create_handle("", ZIP);
 
     start(&timer, 1, 0);
     table_zip("t1", "t2", "t3", zip_handle, table_management);
@@ -85,10 +86,12 @@ void run()
             DPU_ASSERT(dpu_log_read(dpu, stdout));
         }
     }
-
-    start(&timer, 2, 0);
-    T *res = simplepim_gather("t4", table_management);
-    stop(&timer, 2);
+    for (int rep = 0; rep < 1000; rep++) {
+        start(&timer, 2, 0);
+        res = simplepim_gather("t4", table_management);
+        stop(&timer, 2);
+    }
+    stop(&timer, 5);
 
     printf("the total time with timing consumed is (ms): ");
     print(&timer, 5, 1);

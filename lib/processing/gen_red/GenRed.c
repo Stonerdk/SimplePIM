@@ -17,7 +17,11 @@ void combine_table_entries(void* table1, void* table2, uint32_t table_size, uint
 
 }
 
+double d2h = 0;
+
 void gather_tables_to_host(simplepim_management_t* table_management, void* my_table, uint32_t len, uint32_t type_size, uint32_t curr_offset_on_mram, void (*init_func)(uint32_t, void*) ,void (*combineFunc)(void*, void*)){
+    struct timeval d2h_start, d2h_end;
+    gettimeofday(&d2h_start, NULL);
     int i;
     struct dpu_set_t dpu;
     struct dpu_set_t set = table_management->set;
@@ -36,7 +40,6 @@ void gather_tables_to_host(simplepim_management_t* table_management, void* my_ta
 		DPU_ASSERT(dpu_prepare_xfer(dpu, tables+i*aligned_table_size));
 	}
    DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME, curr_offset_on_mram, aligned_table_size, DPU_XFER_DEFAULT));
-
     uint32_t omp_threads = 8;
     uint32_t thread_id;
     uint32_t table_size = len*type_size;
@@ -79,6 +82,8 @@ void gather_tables_to_host(simplepim_management_t* table_management, void* my_ta
     free(omp_helper_tables);
     free(tables);
 
+    gettimeofday(&d2h_end, NULL);
+    d2h += (d2h_end.tv_sec - d2h_start.tv_sec) * 1000000.0 + (d2h_end.tv_usec - d2h_start.tv_usec);
 }
 
 void* table_gen_red(const char* src_name, const char* dest_name, uint32_t output_type, uint32_t output_len, handle_t* binary_handle, simplepim_management_t* table_management, uint32_t info){
@@ -100,100 +105,123 @@ void* table_gen_red(const char* src_name, const char* dest_name, uint32_t output
         }
 
         //timing
-        gettimeofday(&start_time, NULL);
+        void* my_table;
+        double kernel_time = 0, host_table_reduction_time = 0, prepare_args_time = 0, register_table_time = 0;
+        int warmup = 10, repeat = 1000;
+        for (int i = 0; i < warmup + repeat; i++) {
+            gettimeofday(&start_time, NULL);
 
-        struct dpu_set_t set = table_management->set;
-        uint32_t num_dpus = table_management->num_dpus;
-        table_host_t* src_table = lookup_table(src_name, table_management);
-        uint32_t* lens = src_table->lens_each_dpu;
-        uint32_t input_type = src_table->table_type_size;
-        uint32_t inputs = src_table->start;
+            struct dpu_set_t set = table_management->set;
+            uint32_t num_dpus = table_management->num_dpus;
+            table_host_t* src_table = lookup_table(src_name, table_management);
+            uint32_t* lens = src_table->lens_each_dpu;
+            uint32_t input_type = src_table->table_type_size;
+            uint32_t inputs = src_table->start;
 
-        gen_red_arguments_t* input_args = table_management->red_args;
-        // use handle for precompiled binaries
-        const char* binary = binary_handle->bin_location;
-        DPU_ASSERT(dpu_load(set, binary, NULL));
+            gen_red_arguments_t* input_args = table_management->red_args;
+            // use handle for precompiled binaries
+            const char* binary = binary_handle->bin_location;
+            DPU_ASSERT(dpu_load(set, binary, NULL));
 
-        for(int i=0; i<num_dpus; i++){
-            input_args[i].input_start_offset = inputs;
-            input_args[i].input_type_size = input_type;
-            input_args[i].output_start_offset = outputs;
-            input_args[i].output_type_size = output_type;
-            input_args[i].len = lens[i];
-            input_args[i].table_len = output_len;
-            input_args[i].info = info;
-        }
+            for(int i=0; i<num_dpus; i++){
+                input_args[i].input_start_offset = inputs;
+                input_args[i].input_type_size = input_type;
+                input_args[i].output_start_offset = outputs;
+                input_args[i].output_type_size = output_type;
+                input_args[i].len = lens[i];
+                input_args[i].table_len = output_len;
+                input_args[i].info = info;
+            }
 
-        //parse arguments to map function call
-        int i;
-        struct dpu_set_t dpu;
-	    DPU_FOREACH(set, dpu, i) {
-		    DPU_ASSERT(dpu_prepare_xfer(dpu, input_args + i));
-	    }
+            //parse arguments to map function call
+            int i;
+            struct dpu_set_t dpu;
+            DPU_FOREACH(set, dpu, i) {
+                DPU_ASSERT(dpu_prepare_xfer(dpu, input_args + i));
+            }
 
-        DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "GEN_RED_INPUT_ARGUMENTS", 0, sizeof(gen_red_arguments_t), DPU_XFER_DEFAULT));
+            DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "GEN_RED_INPUT_ARGUMENTS", 0, sizeof(gen_red_arguments_t), DPU_XFER_DEFAULT));
 
-        gettimeofday(&end_time, NULL);
-        double prepare_args_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
-                      (end_time.tv_usec - start_time.tv_usec);
+            gettimeofday(&end_time, NULL);
+            if (i >= warmup)
+                prepare_args_time += (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
+                            (end_time.tv_usec - start_time.tv_usec);
 
-        //call red function
-        gettimeofday(&start_time, NULL);
-        DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
-        gettimeofday(&end_time, NULL);
-
-        double kernel_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
-                      (end_time.tv_usec - start_time.tv_usec);
-
-        // reduction on cpu
-        gettimeofday(&start_time, NULL);
-        void* my_table = malloc(output_len*output_type);
-
-        void* lib=dlopen(binary_handle->so_bin_location, RTLD_NOW);
-        void (*init_func)(uint32_t, void*) = dlsym(lib,"init_func");
-        void (*combine_func)(void*, void*) = dlsym(lib, "combine_func");
-
-        if(lib == NULL){
-        printf("dynamic library linking failed!!!\n");
-        }
+            //call red function
 
 
-        gather_tables_to_host(table_management, my_table, output_len, output_type, outputs, init_func, combine_func);
-        dlclose(lib);
-        gettimeofday(&end_time, NULL);
-        double host_table_reduction_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
-                      (end_time.tv_usec - start_time.tv_usec);
+            gettimeofday(&start_time, NULL);
+            DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
+            gettimeofday(&end_time, NULL);
+
+            if (i >= warmup)
+                kernel_time += (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
+                            (end_time.tv_usec - start_time.tv_usec);
+
+            // reduction on cpu
+
+            my_table = malloc(output_len*output_type);
+
+            void* lib=dlopen(binary_handle->so_bin_location, RTLD_NOW);
+            void (*init_func)(uint32_t, void*) = dlsym(lib,"init_func");
+            void (*combine_func)(void*, void*) = dlsym(lib, "combine_func");
+
+            if(lib == NULL){
+            printf("dynamic library linking failed!!!\n");
+            }
+
+            gettimeofday(&start_time, NULL);
+
+
+            gather_tables_to_host(table_management, my_table, output_len, output_type, outputs, init_func, combine_func);
+
+            gettimeofday(&end_time, NULL);
+            if (i >= warmup)
+                host_table_reduction_time += (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
+                            (end_time.tv_usec - start_time.tv_usec);
+
+            dlclose(lib);
+
         // back to dpus
 
         // table info
-        gettimeofday(&start_time, NULL);
+            gettimeofday(&start_time, NULL);
 
-        int32_t* red_tables_lens = malloc(sizeof(uint32_t)*num_dpus);
-        for(int i=0; i<num_dpus; i++){
-            red_tables_lens[i] = output_len;
+
+            int32_t* red_tables_lens = malloc(sizeof(uint32_t)*num_dpus);
+            for(int i=0; i<num_dpus; i++){
+                red_tables_lens[i] = output_len;
+            }
+
+            // table information to management unit
+            table_host_t* t = malloc(sizeof(table_host_t));
+            t->name = malloc(strlen(dest_name)+1);
+            memcpy(t->name, dest_name, strlen(dest_name)+1);
+            t->start = outputs;
+            uint32_t max_end_dpu = outputs+output_len*output_type;
+            t->end = max_end_dpu+(8-max_end_dpu%8);
+            t->len = output_len;
+            t->table_type_size = output_type;
+            t->lens_each_dpu = red_tables_lens;
+            t->is_virtual_zipped = 0;
+
+            add_table(t, table_management);
+                table_management->free_space_start_pos = table_management->free_space_start_pos > t->end ? table_management->free_space_start_pos : t->end;
+            gettimeofday(&end_time, NULL);
+            if (i >= warmup)
+                register_table_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
+                    (end_time.tv_usec - start_time.tv_usec);
         }
+        kernel_time /= repeat;
+        host_table_reduction_time /= repeat;
+        prepare_args_time /= repeat;
+        register_table_time /= repeat;
 
-        // table information to management unit
-        table_host_t* t = malloc(sizeof(table_host_t));
-        t->name = malloc(strlen(dest_name)+1);
-        memcpy(t->name, dest_name, strlen(dest_name)+1);
-        t->start = outputs;
-        uint32_t max_end_dpu = outputs+output_len*output_type;
-        t->end = max_end_dpu+(8-max_end_dpu%8);
-        t->len = output_len;
-        t->table_type_size = output_type;
-        t->lens_each_dpu = red_tables_lens;
-        t->is_virtual_zipped = 0;
-
-        add_table(t, table_management);
-	table_management->free_space_start_pos = table_management->free_space_start_pos > t->end ? table_management->free_space_start_pos : t->end;
-        gettimeofday(&end_time, NULL);
-        double register_table_time = (end_time.tv_sec - start_time.tv_sec) * 1000000.0 +
-                      (end_time.tv_usec - start_time.tv_usec);
+        printf("D2H Intervals: %f\n", d2h/1000);
 
         printf("--------------\n");
         printf("table reduction function : ");
-        printf(binary);
+        //printf(binary);
         printf("\nreduction function kernel execution time : %f\n", kernel_time/1000);
         printf("host reduction execution time : %f\n", host_table_reduction_time/1000);
         printf("function call and table management time : %f\n", (register_table_time+prepare_args_time)/1000);
