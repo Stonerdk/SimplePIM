@@ -7,7 +7,16 @@
 simplepim_management_t* table_management_init(uint32_t num_dpus){
 
     struct dpu_set_t set;
-    DPU_ASSERT(dpu_alloc(num_dpus, "disableSafeChecks=1", &set));
+    int attempt = 0;
+    for (; attempt< 10; attempt++) {
+        if (dpu_alloc(num_dpus, "disableSafeChecks=1", &set) == DPU_OK) {
+        break;
+        }
+        if (attempt == 9) {
+        fprintf(stderr, "Error: Unable to allocate DPUs\n");
+        exit(1);
+        }
+    }
 
     small_table_init(set);
     simplepim_management_t* management = malloc(sizeof(simplepim_management_t));

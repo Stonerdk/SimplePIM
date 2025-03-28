@@ -63,8 +63,8 @@ void run()
     handle_t *add_handle = create_handle("va_funcs", MAP);
     handle_t *zip_handle = create_handle("", ZIP);
     Timer timer;
-    start(&timer, 0, 0);
     start(&timer, 5, 0);
+    start(&timer, 0, 0);
     simplepim_scatter("t1", A, nr_elements, sizeof(T), table_management);
     simplepim_scatter("t2", B, nr_elements, sizeof(T), table_management);
     stop(&timer, 0);
@@ -86,8 +86,8 @@ void run()
             DPU_ASSERT(dpu_log_read(dpu, stdout));
         }
     }
-    for (int rep = 0; rep < 1000; rep++) {
-        start(&timer, 2, 0);
+    for (int rep = 0; rep < 10; rep++) {
+        start(&timer, 2, rep);
         res = simplepim_gather("t4", table_management);
         stop(&timer, 2);
     }
@@ -103,7 +103,7 @@ void run()
     print(&timer, 1, 1);
     printf("\n");
     printf("DPU-CPU Time (ms): ");
-    print(&timer, 2, 1);
+    print(&timer, 2, 10);
     printf("\n");
 
     int32_t is_correct = 1;
